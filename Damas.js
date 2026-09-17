@@ -53,7 +53,7 @@ let turno = ficha1;             //el turno inicia con las fichas blancas osea la
 
 //----- Funcion de limites del tablero
 function dentro(f, c){      //es una funcion que coloca limites para que las fichas no salgan
-    return f >= MIN && f < MAX && c >= MIN && c < MAX;      //f = filas y c = columnas
+    return f >= MIN && f <= MAX && c >= MIN && c <= MAX;      //f = filas y c = columnas
 }
 
 //----- Funcion de fichas del equipo
@@ -130,18 +130,28 @@ function mover_fichas(origen, destino){
     if (jugada.captura){
         tablero[jugada.captura.fila][jugada.captura.colum] = vacio;       //si la jugada es de captura la casilla capturada queda vacia
     }
-    if (destino.fila === 0 && tablero[destino.fila][destino.colum] === ficha1) {    //si llega al final del tablero su ficha se convierte en reina de referencia de abajo hasta arriba
-        tablero[destino.fila][destino.colum] = reina1;              
+    let corono = false;
+    if (destino.fila === Coronado_1 && tablero[destino.fila][destino.colum] === ficha1) {    //si llega al final del tablero su ficha se convierte en reina de referencia de abajo hasta arriba
+        tablero[destino.fila][destino.colum] = reina1; 
+        corono = true;             
     }
-    if (destino.fila === 7 && tablero[destino.fila][destino.colum] === ficha2) {    //si llega al inicio del tablero su ficha se convierte en reina de referencia de abajo hasta arriba
+    if (destino.fila === Coronado_2 && tablero[destino.fila][destino.colum] === ficha2) {    //si llega al inicio del tablero su ficha se convierte en reina de referencia de abajo hasta arriba
         tablero[destino.fila][destino.colum] = reina2;
+        corono = true;
     }
-    return true;
+    return {ok: true, capturo: jugada.captura !== null, corono };
 }
 
 //----- Funcion que determinara la cantidad de fichas del equipo
 function hay_fichas(equipo){        //verifica si hay fichas del equipo
-    return tablero.flat().some(v => es_de_equipo(v, equipo));
+    for(let i = MIN; i <= MAX; i++){
+        for (let j = MIN; j <= MAX; j++){
+            if(es_de_equipo(tablero[i][j], equipo)){    //si las hay retorna verdadero
+                return true;
+            }
+        }
+    }
+    return false;       // si no hay retorna falso
 }
 
 //----- Funcion de imprimir tablero
@@ -170,44 +180,117 @@ function imprimir_tablero() {
     console.log("");
 }
 
-//----- Funcion que convierte el texto en coordendas
-function pasear_coordenada(texto){
-    //formato esperado: "fila,columna" -> ej. "2,3"
-    const partes = texto.split(",").map(n => Number(n.trim())); //parte el texto para sacar "," y solo tener las filas y las columnas
-    if (partes.length !== 2 || partes.some(Number.isNaN)){
-        return null;
-    }
-    const [fila, colum] = partes;
-    if (!dentro(fila, colum)){      //si las coordenadas no existen en el tablero se retorna nulo
-        return null;
-    }
-    return { fila, colum };
+//----- Funcion de conversion de coordenadas a texto ej. "C5"
+function texto_coordenada(f, c){
+    return `${abc[f]}${c}`;     // retorn el valor de la letra en el diccionario y la columna que ya es un numero
 }
 
-//---- Funcion asincronada que determin el turno del jugador
+//----- Funcion de lista a texto
+function lista_texto(movimientos){
+    return movimientos.map(m => texto_coordenada(m.fila, m.colum)).join(" ");
+}
+
+//----- Funcion que convierte el texto en coordendas
+function pasear_coordenada(texto){
+    // formato aceptado: "C5", "c5", "C,5" e incluso el 3,5 pero es mejor el de letra y numero mas semejante a un tablero normal
+    if (!texto){
+        return null;
+    }
+    const limpio = texto.trim().toUpperCase().replace(/[\s,;.-]/g, ""); //elimina acentos, comas y separadores, y pasa el texto a mayusculas / trim()elimina espacios en blanco y caracteres de terminacion de linea
+    let f = null;
+    let c = null;
+
+    const letra_numero = limpio.match(/^([A-H])([1-8])$/);      //ej. C5, devuelve su coincidencia
+
+    if (letra_numero){
+        f = dic[letra_numero[1]];
+        c = Number(letra_numero[2]);
+    }
+    else {
+        const partes = texto.split(",").map(n => Number(n.trim())); //divide la cadena utilizando ","como eje
+
+        if (partes.length !== 2 || partes.some(Number.isNaN)){      // si el tamaño de partes es diferente de 2 elementos devuelve null
+            return null;
+        }
+        [f, c] = partes;    //partes se vuelve una coordenada
+    }
+
+    if (!dentro(f, c)){     // si la coordenada no existe dentro del tablero se retorna null
+        return null;
+    }
+    return {fila: f, colum: c};
+}
+
+//----- Funcion asincrona que obliga a seguir comiendo mientras la misma ficha tenga captura
+async function cadena_captura(posicion, corono){
+    let actual = posicion;
+
+    while(!corono && capturas_disponibles(actual.fila, actual.colum).length > 0){
+        const siguientes = capturas_disponibles(actual.fila, actual.colum);
+        imprimir_tablero();
+        console.log(`¡Captura multiple! Estas obligado a seguir comiendo con la ficha en ${texto_coordenada(actual.fila, actual.colum)}`);
+        console.log("Capturas posibles: ", lista_texto(siguientes));
+
+        const texto = await rl.question("Elige el destino de la siguiente captura: ");
+        const destino = pasear_coordenada(texto);
+        
+        if (!destino || !localizable(siguientes, destino)){     // no se mueve nada hasta validar que sea una captura real
+            console.log("Coordenada invalida. Intente de nuevo.\n");
+            continue;   // permite saltar a la siguiente iteracion omitiendo el resto del bucle
+        }
+
+        const resultado = mover_fichas(actual, destino);
+        actual = destino;
+        corono = resultado.corono;
+    }
+    return actual;
+}
+
+//---- Funcion asincronada que determina el turno del jugador
 async function turno_jugador(){     //funcion asincronada = async function
     console.log(`Turno: ${turno === ficha1 ? "Blancas (●)" : "Rojas (o)"}`);
 
-    const origen_texto = await rl.question("Elige tu ficha (fila, columna): ");     //await espera que rl.question sea respondida
+    const obligadas = obligar_captur ? fichas_pueden_comer(turno) : [];
+
+    if (obligadas.length > 0){
+        console.log("Captura obligatoria. Fichas que pueden comer: ", obligadas.map(p => texto_coordenada(p.fila, p.colum)).join(" "));
+    }
+
+    const origen_texto = await rl.question("Elige tu ficha (Ej. C5): ");     //await espera que rl.question sea respondida
     const origen = pasear_coordenada(origen_texto);     //la respuesta se convierte en coordenadas
     if (!origen || !es_de_equipo(tablero[origen.fila][origen.colum], turno)){       //si todo da falso manda el siguiente mensaje a consola
         console.log("Casilla invalida o no es tu ficha. Intenta de nuevo.\n");
         return;
     }
 
-    const movimientos = movimiento_valido(origen.fila, origen.colum);       //si la ficha escogida no puede moverse muestra el texto siguiente
+    if (obligadas.length > 0 && capturas_disponibles(origen.fila, origen.colum).length === 0){
+        console.log("Hay una captura disponible: debes mover una ficha que pueda comer.\n");
+        return;
+    }
+
+    const movimientos = obligadas.length > 0 ? capturas_disponibles(origen.fila, origen.colum) : movimiento_valido(origen.fila, origen.colum);       //si hay captura obligatoria solo ofrece capturas
     if (movimientos.length === 0){
         console.log("Esa ficha no tiene movimientos disponibles.\n");
         return;
     }
 
-    console.log("Movimientos posibles:", movimientos.map(m => `(${m.fila},${m.colum})`).join(" "));     //muestra los movimientos posibles de la ficha elegida
+    console.log("Movimientos posibles:", lista_texto(movimientos));     //muestra los movimientos posibles de la ficha elegida
     const destino_texto = await rl.question("Elige destino (fila, columna): ");     //await espera que rl.question sea respondida
     const destino = pasear_coordenada(destino_texto);       //la respuesta se guarda como coordenada de destino
 
-    if (!destino || !mover_fichas(origen, destino)){                //si las coordenadas de destino no son posibles o incorrectas lanza el siguiente mensaje
+    if (!destino || !localizable(movimientos, destino)){                //se valida antes de mover para no ejecutar jugadas prohibidas
         console.log("Movimiento invalido. Intenta de nuevo.\n");
         return;
+    }
+
+    const resultado = mover_fichas(origen, destino);
+    if (!resultado.ok){
+        console.log("Movimiento invalido. Intenta de nuevo.\n");
+        return;
+    }
+
+    if (resultado.capturo){
+        await cadena_captura(destino, resultado.corono);        // aqui se obliga a seguir comiendo
     }
 
     turno = turno === ficha1 ? ficha2 : ficha1;     //cambia de turno al finalizar el turno de las fichas blancas
@@ -217,7 +300,7 @@ async function turno_jugador(){     //funcion asincronada = async function
 //----- Funcion que presenta ya la jugabilidad
 async function jugar(){     //funcion que ya muestra las funcionalidades y deja jugar
     console.log("===== DAMAS =====");
-    console.log('Escribe las coordenadas como "fila,columna", por ejemplo: 2,1\n');
+    console.log('Escribe las coordenadas como "fila,columna", por ejemplo: C5 (fila C, columna 5)\n');
 
     imprimir_tablero();
 
