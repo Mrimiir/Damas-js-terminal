@@ -1,6 +1,7 @@
 /*
-    PROTOTIPO MEJORADO
-en estructura para mejor visualización a comparacion con prototipo.js
+Producto final: Juego De Damas Para Terminal
+con Node.js
+@Autor: Mrimiir
 */
 
 //-----Librerias necesarias para leer la decicion del usuario
@@ -68,6 +69,8 @@ function movimiento_valido(fila, colum){
         return [];
     }
 
+    const reina = ficha === reina1 || ficha === reina2;
+
     const direcciones =
     ficha === ficha1 ? [[-1, -1], [-1, 1]] :    // direcciones para ficha1 arriba,izquierda [-1,-1] / arriba,derecha [-1,1]
     ficha === ficha2 ? [[1, -1], [1, 1]] :      // direcciones para ficha2 abajo,izquierda [1,-1] / abajo,derecha [1,1]
@@ -77,16 +80,41 @@ function movimiento_valido(fila, colum){
     const equipo_rival = equipo_propio === ficha1 ? ficha2 : ficha1;
     const movimientos = [];
 
-    for (const [df, dc] of direcciones){        //df = direccion fila, dc = direccion columna
-        const nf = fila + df;
-        const nc = colum + dc;
-        if (dentro(nf,nc) && tablero[nf][nc] === vacio){                //nf = fila nula, nc = columna nula / nula = vacia
-            movimientos.push({fila: nf, colum: nc, captura: null });
+     if (!reina){      // fichas normales: un paso, o captura saltando una casilla
+        for (const [df, dc] of direcciones){        //df = direccion fila, dc = direccion columna
+            const nf = fila + df;
+            const nc = colum + dc;
+            if (dentro(nf,nc) && tablero[nf][nc] === vacio){                //nf = fila nula, nc = columna nula / nula = vacia
+                movimientos.push({fila: nf, colum: nc, captura: null });
+            }
+            if (dentro(nf,nc) && es_de_equipo(tablero[nf][nc], equipo_rival)){
+                const sf = fila + df * 2, sc = colum + dc * 2;                      // sf = salto de fila, sc = salto de columna
+                if (dentro(sf, sc) && tablero[sf][sc] === vacio) {
+                    movimientos.push({ fila: sf, colum: sc, captura: { fila: nf, colum: nc } });
+                }
+            }
         }
-        if (dentro(nf,nc) && es_de_equipo(tablero[nf][nc], equipo_rival)){      
-            const sf = fila + df * 2, sc = colum + dc * 2;                      // sf = salto de fila, sc = salto de columna
-            if (dentro(sf, sc) && tablero[sf][sc] === vacio) {
-                movimientos.push({ fila: sf, colum: sc, captura: { fila: nf, colum: nc } });
+    }
+    else{      // reina: se desplaza toda la diagonal, no casilla por casilla
+        for (const [df, dc] of direcciones){
+            let nf = fila + df;
+            let nc = colum + dc;
+
+            while (dentro(nf, nc) && tablero[nf][nc] === vacio){      // avanza mientras encuentre casillas vacias
+                movimientos.push({ fila: nf, colum: nc, captura: null });
+                nf += df;
+                nc += dc;
+            }
+
+            if (dentro(nf, nc) && es_de_equipo(tablero[nf][nc], equipo_rival)){      // se topo con una ficha rival
+                const capturada = { fila: nf, colum: nc };
+                let lf = nf + df;      // lf/lc = casillas de aterrizaje despues de la captura
+                let lc = nc + dc;
+                while (dentro(lf, lc) && tablero[lf][lc] === vacio){
+                    movimientos.push({ fila: lf, colum: lc, captura: capturada });
+                    lf += df;
+                    lc += dc;
+                }
             }
         }
     }
