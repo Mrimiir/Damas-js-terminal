@@ -327,8 +327,8 @@ async function turno_jugador(){     //funcion asincronada = async function
 
 //----- Funcion que presenta ya la jugabilidad
 async function jugar(){     //funcion que ya muestra las funcionalidades y deja jugar
-    console.log("===== DAMAS =====");
-    console.log('Escribe las coordenadas como "fila,columna", por ejemplo: C5 (fila C, columna 5)\n');
+    console.log("============ JUEGO DE DAMAS ============");
+    console.log('Escribe las coordenadas como "fila,columna"\npor ejemplo: C5 (fila C, columna 5)\n');
 
     imprimir_tablero();
 
