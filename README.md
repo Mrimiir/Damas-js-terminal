@@ -16,7 +16,7 @@ reglas impuestas [Reglas](./Reglas.txt).
 
 "> version utilizada v24.20.0"
 
-1. Run Damas.j
+1. Run Damas.js
 
 ```bash
 
@@ -26,4 +26,4 @@ node Damas.js
 
 ## Autor
 
-| [<img src="./assets/⭑0052 - Meowth (emoticon - dizzy).jpg" width=115><br><sub>Mrimiir</sub>](https://github.com/Mrimiir) | :---: |
+| [<img src="./assets/⭑0052 - Meowth (emoticon - dizzy).jpg" width=115><br><sub>Mrimiir</sub>](https://github.com/Mrimiir) |
