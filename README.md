@@ -14,7 +14,8 @@ reglas impuestas [Reglas](./Reglas.txt).
 
 - [Node.js](https://nodejs.org/es)
 
-"> version utilizada v24.20.0"
+> [!NOTE]
+> version utilizada v24.20.0
 
 1. Run Damas.js
 
