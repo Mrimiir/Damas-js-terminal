@@ -11,7 +11,6 @@ import { stdin as input, stdout as output } from 'node:process';
 const rl = readline.createInterface({ input, output });     //todo esto para poder recibir un dato del usuario ( para leer )
 
 import { emitKeypressEvents } from 'node:readline'; // para leer la entrada de teclas como las flechas
-import { resolve } from 'node:dns';
 emitKeypressEvents(input);
 
 //-----Declaracion de constantes
@@ -213,11 +212,6 @@ function texto_coordenada(f, c){
     return `${abc[f]}${c}`;     // retorn el valor de la letra en el diccionario y la columna que ya es un numero
 }
 
-//----- Funcion de lista a texto
-function lista_texto(movimientos){
-    return movimientos.map(m => texto_coordenada(m.fila, m.colum)).join(" ");
-}
-
 //----- Funcion que convierte el texto en coordendas
 function pasear_coordenada(texto){
     // formato aceptado: "C5", "c5", "C,5" e incluso el 3,5 pero es mejor el de letra y numero mas semejante a un tablero normal
@@ -304,7 +298,6 @@ function elegir_mov(movimientos, titulo){        //titulo es el mensaje de conte
         input.on('keypress', al_presionar);     // retorna la referencia del input osea la entrada de las teclas si presione Esc hace lo de al_presionar con esa key
         dibujar();
     })
-
 }
 
 //----- Funcion asincrona que obliga a seguir comiendo mientras la misma ficha tenga captura
@@ -325,6 +318,7 @@ async function cadena_captura(posicion, corono){
         actual = destino;
         corono = resultado.corono;
     }
+    console.clear();
     return actual;
 }
 
