@@ -10,6 +10,10 @@ import { stdin as input, stdout as output } from 'node:process';
 
 const rl = readline.createInterface({ input, output });     //todo esto para poder recibir un dato del usuario ( para leer )
 
+import { emitKeypressEvents } from 'node:readline'; // para leer la entrada de teclas como las flechas
+import { resolve } from 'node:dns';
+emitKeypressEvents(input);
+
 //-----Declaracion de constantes
 const vacio = 0;
 const ficha1 = 1;
@@ -139,10 +143,6 @@ function fichas_pueden_comer(equipo){
     return lista;
 }
 
-//----- Funcion revisa si la coordenada esta en una lista de movimientos
-function localizable(lista, destino){
-    return lista.some(m => m.fila === destino.fila && m.colum === destino.colum);
-}
 
 //----- Funcion que permitira el movimiento de las fichas
 function mover_fichas(origen, destino){
@@ -183,7 +183,7 @@ function hay_fichas(equipo){        //verifica si hay fichas del equipo
 }
 
 //----- Funcion de imprimir tablero
-function imprimir_tablero() {
+function imprimir_tablero(resaltar = null) {        //resaltar = {fila, colum} de la casilla que se quiere marcar (osea el destino seleccionado)
     const iconos = { 0: "·", 1: "●", 2: "\x1b[31m○", 3: "♛", 4: "\x1b[31m♕" };
     for (let i = 0; i < tablero.length; i++) {
         let fila = " ";
@@ -198,8 +198,8 @@ function imprimir_tablero() {
                 
             }
             else{
-                
-                const bg = (i + j) % 2 === 0 ? '\x1b[46m' : '\x1b[40m'; //bg = backgroud    \x1b = Esc  46m = cian  40m = negro
+                const _es_resultado =  resaltar && resaltar.fila === i && resaltar.colum === j;     // elemento de fila y columna a resaltar
+                const bg = _es_resultado ? "\x1b[43m" : ((i + j) % 2 === 0 ? '\x1b[46m' : '\x1b[40m'); //bg = backgroud    \x1b = Esc  46m = cian  40m = negro  43m = amarillo (seleccionado)
                 fila += `${bg} ${iconos[tablero[i][j]]} \x1b[0m`;
             }
         }
@@ -249,6 +249,64 @@ function pasear_coordenada(texto){
     return {fila: f, colum: c};
 }
 
+//----- Funcion para determinar el movimiento de la ficha (izquierda o derecha)
+function elegir_mov(movimientos, titulo){        //titulo es el mensaje de contexto de la accion
+    return new Promise((resolve) => {
+        let indice = 0;
+
+        function dibujar(){
+            console.clear();
+            imprimir_tablero(movimientos[indice]);       //resalta en el tablero la casillas seleccionada
+            console.log(titulo);
+            const es_captura = movimientos[indice].captura ? " (captura)" : "";
+            console.log(`Opción ${indice + 1} de ${movimientos.length}${es_captura}`);
+            console.log("(← izquierda . → derecha . Enter confirmar . Esc cancelar)\n");     //las flechas son las direcciones de movimiento enter confirma el movimiento y esc cancela la ficha elegida para elegir otra ficha
+        }
+
+        function limpiar(){     //borra las llamadas de entrada de teclas, para que no se acumulen 
+            input.removeListener('Keypress', al_presionar);
+            if (input.isTTY){
+                input.setRawMode(false);
+            }
+        }
+
+        function al_presionar(str, key){        //dependiendo de la tecla presionada realiza tal accion mover la direccion de la ficha, cancelar eleccion de ficha, confirmar direccion y cerrar el juego
+            if (!key){
+                return;
+            }
+
+            if (key.name === 'left'){
+                indice = (indice - 1  + movimientos.length) % movimientos.length;
+                dibujar();
+            }
+            else if (key.name === 'right'){
+                indice = (indice + 1) % movimientos.length;
+                dibujar();
+            }
+            else if (key.name === 'return'){
+                limpiar();
+                resolve(movimientos[indice]);
+            }
+            else if (key.name === 'escape'){
+                limpiar();
+                resolve(null);      // null = el jugador cancelo la seleccion de ficha
+            }
+            else if (key.ctrl && key.name === 'c'){     // Ctrl+c para salir del juego
+                limpiar();
+                rl.close();
+                process.exit();
+            }
+        }
+
+        if (input.isTTY){
+            input.setRawMode(true);     //hace que cada tecla llege a terminal sin esperar enter y ni hacer eco
+        }
+        input.on('keypress', al_presionar);     // retorna la referencia del input osea la entrada de las teclas si presione Esc hace lo de al_presionar con esa key
+        dibujar();
+    })
+
+}
+
 //----- Funcion asincrona que obliga a seguir comiendo mientras la misma ficha tenga captura
 async function cadena_captura(posicion, corono){
     let actual = posicion;
@@ -256,15 +314,11 @@ async function cadena_captura(posicion, corono){
     while(!corono && capturas_disponibles(actual.fila, actual.colum).length > 0){
         const siguientes = capturas_disponibles(actual.fila, actual.colum);
         imprimir_tablero();
-        console.log(`¡Captura multiple! Estas obligado a seguir comiendo con la ficha en ${texto_coordenada(actual.fila, actual.colum)}`);
-        console.log("Capturas posibles: ", lista_texto(siguientes));
+        const destino = await elegir_mov(siguientes, `¡Captura multiple! Estas obligado a seguir comiendo con la ficha en ${texto_coordenada(actual.fila, actual.colum)}`);     
 
-        const texto = await rl.question("Elige el destino de la siguiente captura: ");
-        const destino = pasear_coordenada(texto);
-        
-        if (!destino || !localizable(siguientes, destino)){     // no se mueve nada hasta validar que sea una captura real
-            console.log("Coordenada invalida. Intente de nuevo.\n");
-            continue;   // permite saltar a la siguiente iteracion omitiendo el resto del bucle
+        if (!destino){      //si el jugador cancela el movimiento de esa ficha, pero la captura es obligatoria, vuelve a preguntar las direcciones
+            console.log("La captura es obligatoria, no pude ser cancelada.\n");
+            continue;   // salta el resto y repite el ciclo
         }
 
         const resultado = mover_fichas(actual, destino);
@@ -302,12 +356,10 @@ async function turno_jugador(){     //funcion asincronada = async function
         return;
     }
 
-    console.log("Movimientos posibles:", lista_texto(movimientos));     //muestra los movimientos posibles de la ficha elegida
-    const destino_texto = await rl.question("Elige destino (fila, columna): ");     //await espera que rl.question sea respondida
-    const destino = pasear_coordenada(destino_texto);       //la respuesta se guarda como coordenada de destino
+    const destino = await elegir_mov(movimientos, `Ficha en ${texto_coordenada(origen.fila, origen.colum)}: elija su movimiento`);
 
-    if (!destino || !localizable(movimientos, destino)){                //se valida antes de mover para no ejecutar jugadas prohibidas
-        console.log("Movimiento invalido. Intenta de nuevo.\n");
+    if (!destino){      // el jugador presiono Esc, se candela el turno sin mover nada
+        console.log("Selección cancelada.\n");
         return;
     }
 
@@ -327,8 +379,9 @@ async function turno_jugador(){     //funcion asincronada = async function
 
 //----- Funcion que presenta ya la jugabilidad
 async function jugar(){     //funcion que ya muestra las funcionalidades y deja jugar
-    console.log("============ JUEGO DE DAMAS ============");
+    console.log("\n============ JUEGO DE DAMAS ============\n");
     console.log('Escribe las coordenadas como "fila,columna"\npor ejemplo: C5 (fila C, columna 5)\n');
+    console.log("Elige con las flechas del teclado y confirma con Enter.\n");
 
     imprimir_tablero();
 
