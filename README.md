@@ -8,7 +8,7 @@ reglas impuestas [Reglas](./Reglas.txt).
 
 ### Juego de damas imagen
 
-![imagen_de_las_damas_en_terminal](./assets/image.png)
+![imagen_de_las_damas_en_terminal](./assets/Captura%20de%20pantalla%202026-09-19%20212424.png) ![imagen_de_las_damas_eleccion](./assets/Captura%20de%20pantalla%202026-09-19%20212349.png)
 
 ## Tecnologias usadas & Run
 
