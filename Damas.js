@@ -140,7 +140,7 @@ function fichas_pueden_comer(equipo){
             }
         }
     }
-    return lista;
+    return lista;       //retorna la lista de fichas que pueden comer
 }
 
 
