@@ -388,4 +388,29 @@ async function jugar(){     //funcion que ya muestra las funcionalidades y deja 
     rl.close();
 }
 
-jugar();
+
+//funcion principal
+async function main(){
+    do{
+        console.log("====== Menu de juego =====");
+        console.log("[1]. Iniciar juego.");
+        console.log("[2]. Salir.");
+
+        const opc = await rl.question("Ingrese una opcion: ");
+        switch(opc){
+            case "1": 
+                    console.clear();
+                    jugar();
+            break;
+            case "2": console.log("Saliendo del juego...");
+                        process.exit();
+            break;
+            default : console.log("opcion invalida.");
+            break;
+        }
+    }while(true);
+}
+if (import.meta.main){
+    main();
+}
+
