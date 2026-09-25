@@ -13,6 +13,8 @@ const rl = readline.createInterface({ input, output });     //todo esto para pod
 import { emitKeypressEvents } from 'node:readline'; // para leer la entrada de teclas como las flechas
 emitKeypressEvents(input);
 
+import * as fs from 'node:fs/promises';     //libreria que permite manejar carpetas y archivos
+
 //-----Declaracion de constantes
 const vacio = 0;
 const ficha1 = 1;
@@ -350,7 +352,7 @@ async function cadena_captura(posicion, corono){
 async function turno_jugador(){     //funcion asincronada = async function
     console.log(`Turno: ${turno === ficha1 ? "Blancas (●)" : "Rojas (o)"}`);
     mostrar_tiempo();       // imprime el tiempo estatico actual sin dañar la estructura del texto
-
+    console.log("Presiona 'g' para guardar la partida.");
     const obligadas = obligar_captur ? fichas_pueden_comer(turno) : [];
 
     if (obligadas.length > 0){
@@ -362,6 +364,9 @@ async function turno_jugador(){     //funcion asincronada = async function
     if (origen_texto.trim().toLowerCase() === "r") {
             return "RENDIRSE";
         }
+    if (origen_texto.trim().toLowerCase() === "g"){
+        return "GUARDAR";
+    }
 
     const origen = pasear_coordenada(origen_texto);     //la respuesta se convierte en coordenadas
     if (!origen || !es_de_equipo(tablero[origen.fila][origen.colum], turno)){       //si todo da falso manda el siguiente mensaje a consola
@@ -407,10 +412,13 @@ async function turno_jugador(){     //funcion asincronada = async function
 }
 
 //----- Funcion que presenta ya la jugabilidad
-async function jugar(){     //funcion que ya muestra las funcionalidades y deja jugar
-    tablero = crear_tablero();      //reinicia el tablero a su estado original
-    turno = ficha1;     //devuelve el turno inicial a ficha1
-    tiempo_restante = {[ficha1]: tiempo_inicial, [ficha2]: tiempo_inicial};     //reinicia el reloj de cada ficha al comenzar la partida
+async function jugar(es_partida_cargada = false){     //funcion que ya muestra las funcionalidades y deja jugar
+    if (!es_partida_cargada){
+        tablero = crear_tablero();      //reinicia el tablero a su estado original
+        turno = ficha1;     //devuelve el turno inicial a ficha1
+        tiempo_restante = {[ficha1]: tiempo_inicial, [ficha2]: tiempo_inicial};     //reinicia el reloj de cada ficha al comenzar la partida
+    }
+    
 
     console.log("\n============ JUEGO DE DAMAS ============\n");
     console.log('Escribe las coordenadas como "fila,columna"\npor ejemplo: C5 (fila C, columna 5)\n');
@@ -442,11 +450,32 @@ async function jugar(){     //funcion que ya muestra las funcionalidades y deja 
     }, 1000);
 
     let jugador_rendido = null; // Guardará quién se rindió, si ocurre
+    let partida_guardada = false;
 
     while (hay_fichas(ficha1) && hay_fichas(ficha2) && !tiempo_terminado()){
         const accion = await turno_jugador();
         if (accion === "RENDIRSE"){
             jugador_rendido = turno;
+            break;
+        }
+        // logica para guardar la partida
+        if (accion === "GUARDAR"){
+            clearInterval(intervalo_cronometro);        //pausamos el tiempo para que no corra mientras escribe
+            const nombre = await rl.question("\nIngrese el nombre para guardar su partida: ");
+
+            // se crea objeto con los datos actuales
+            const estado_juego = {tablero, turno, tiempo_restante};
+
+            try{
+                await fs.mkdir('./partidas_guardadas', {recursive: true});      // crea la carpeta para guardar las partidas si es que no existia
+                await fs.writeFile(`./partidas_guardadas/${nombre}.json`, JSON.stringify(estado_juego));
+                console.log(`\n¡Partida "${nombre}" guardada con exito! Volviendo al menu...`);
+            }
+            catch (error){
+                console.log("\nError al guardar la partida.");
+            }
+
+            partida_guardada = true;
             break;
         }
         if(!tiempo_terminado()){
@@ -456,7 +485,11 @@ async function jugar(){     //funcion que ya muestra las funcionalidades y deja 
 
     //si el juego termina normalmente limpiamos intervalo
     clearInterval(intervalo_cronometro);
-    if (jugador_rendido !== null){
+    // evita mostrar ganadores si el juego termino por guardardo
+    if (partida_guardada){
+        await new Promise(res => setTimeout(res, 2000));        //pequeña pausa antes de limpiar
+    }
+    else if (jugador_rendido !== null){
         console.log(`\n¡Las ${jugador_rendido === ficha1 ? "Blancas (●)" : "Rojas (o)"} se han rendido!`);
         console.log(jugador_rendido === ficha1 ? "¡¡Ganaron las Rojas!!" : "¡¡Ganaron las Blancas!!");
     }
@@ -472,6 +505,52 @@ async function jugar(){     //funcion que ya muestra las funcionalidades y deja 
     await rl.question("\nPresiona Enter para continuar...");
 }
 
+//----- Funcion para visualizar y cargar partidas guardadas
+async function cargar_partida(){
+    try{
+        await fs.mkdir('./partidas_guardadas', { recursive: true });
+        const archivos = (await fs.readdir('./partidas_guardadas')).filter(f => f.endsWith('.json'));       //filtra la carpeta para encontrar archivos .json
+
+        if (archivos.length === 0) {
+            console.log("\nNo hay partidas guardadas actualmente.\n");
+            await rl.question("Presiona Enter para volver...");
+            return;
+        }
+
+        console.log("\n--- Partidas Guardadas ---");
+        archivos.forEach((archivo, i) => {
+            console.log(`[${i + 1}]. ${archivo.replace('.json', '')}`);     //muestra las partidas guardadas
+        });
+        console.log("[0]. Cancelar y volver");
+
+        const seleccion = await rl.question("\nElige el número de la partida: ");
+        const num = parseInt(seleccion);        //vuelve lo ingresado a un entero
+
+        if (num === 0) {
+            return;
+        }
+
+        if (num > 0 && num <= archivos.length) {
+            const nombre_archivo = archivos[num - 1];
+            // Lee el archivo JSON y carga los datos en las variables globales
+            const datos = JSON.parse(await fs.readFile(`./partidas_guardadas/${nombre_archivo}`, 'utf-8'));
+            tablero = datos.tablero;
+            turno = datos.turno;
+            tiempo_restante = datos.tiempo_restante;
+
+            console.clear();
+            console.log(`Cargando partida: ${nombre_archivo.replace('.json', '')}...`);
+            await jugar(true); // true = Le indica a jugar() que NO reinicie el tablero
+        } else {
+            console.log("Selección inválida.");
+            await rl.question("Presiona Enter para volver...");
+        }
+    } catch (error) {
+        console.log("\nOcurrió un error al intentar leer las partidas.");
+        await rl.question("Presiona Enter para volver...");
+    }
+}
+
 
 //funcion principal
 async function main(){
@@ -479,19 +558,24 @@ async function main(){
         console.clear();
         console.log("====== Menu de juego =====");
         console.log("[1]. Iniciar juego.");
-        console.log("[2]. Salir.");
+        console.log("[2]. Cargar partida guardada.")
+        console.log("[3]. Salir.");
 
         const opc = await rl.question("Ingrese una opcion: ");
         switch(opc){
             case "1": 
                     console.clear();
-                    await jugar();
+                    await jugar(false);     //juego nuevo reiniciar valores
             break;
-            case "2": console.log("Saliendo del juego...");
+            case "2": 
+                    console.clear();
+                    await cargar_partida();
+            break;
+            case "3": console.log("Saliendo del juego...");
                         rl.close;
                         process.exit();
             break;
-            default : console.log("opcion invalida.");
+            default : await rl.question("Opcion invalida. Presione Enter para intentar denuevo.");
             break;
         }
     }while(true);
