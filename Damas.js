@@ -28,6 +28,7 @@ const MAX = 8;      // ultima casilla jugable
 const Coronado_1 = MIN;     // ficha 1 corona llegando a la fila A
 const Coronado_2 = MAX;     // ficha 2 corona llegando a la fila H
 const obligar_captur = true;
+const tiempo_inicial = 120;         //para el cronometro 120seg = 2min
 
 
 
@@ -53,7 +54,8 @@ function crear_tablero(){       //crea un tablero numerico para tener un entendi
 
 let tablero = crear_tablero();
 let turno = ficha1;             //el turno inicia con las fichas blancas osea las ficha1
-//imprimir_tablero(tablero);
+let tiempo_restante = { [ficha1] : tiempo_inicial, [ficha2] : tiempo_inicial};  //cada ficha tiene su propio cronometro
+let intervalo_cronometro = null;    //guardara  el id del setInterval para el cronometro
 
 //----- Funcion de limites del tablero
 function dentro(f, c){      //es una funcion que coloca limites para que las fichas no salgan
@@ -207,6 +209,24 @@ function imprimir_tablero(resaltar = null) {        //resaltar = {fila, colum} d
     console.log("");
 }
 
+//----- Funcion de formato del cronometro
+function formatear_tiempo(segundos){
+    const total = Math.max(0, Math.ceil(segundos));     //nunca muestra el tiempo negarivo
+    const min = Math.floor(total / 60);     //minutos
+    const seg = total % 60;         //segundos
+    return `${min}:${seg.toString().padStart(2,"0")}`;      // hace ques e muestre el cronometro con un estructura 00:00, .padStar(2,"0") hace que sean 2 numeros ej. enves de 9 sera 09
+}
+
+//----- Funcion que muestra el tiempo restante de cada ficha
+function mostrar_tiempo(){
+    console.log(`Tiempo Blancas (●): ${formatear_tiempo(tiempo_restante[ficha1])}   |   Tiempo Rojas (o): ${formatear_tiempo(tiempo_restante[ficha2])}`);
+}
+
+//----- Funcion que indica si algun equipo se quedo sin tiempo
+function tiempo_terminado(){
+    return tiempo_restante[ficha1] <= 0 || tiempo_restante[ficha2] <= 0;
+}
+
 //----- Funcion de conversion de coordenadas a texto ej. "C5"
 function texto_coordenada(f, c){
     return `${abc[f]}${c}`;     // retorn el valor de la letra en el diccionario y la columna que ya es un numero
@@ -325,6 +345,7 @@ async function cadena_captura(posicion, corono){
 //---- Funcion asincronada que determina el turno del jugador
 async function turno_jugador(){     //funcion asincronada = async function
     console.log(`Turno: ${turno === ficha1 ? "Blancas (●)" : "Rojas (o)"}`);
+    mostrar_tiempo();       // imprime el tiempo estatico actual sin dañar la estructura del texto
 
     const obligadas = obligar_captur ? fichas_pueden_comer(turno) : [];
 
@@ -373,18 +394,57 @@ async function turno_jugador(){     //funcion asincronada = async function
 
 //----- Funcion que presenta ya la jugabilidad
 async function jugar(){     //funcion que ya muestra las funcionalidades y deja jugar
+    tiempo_restante = {[ficha1]: tiempo_inicial, [ficha2]: tiempo_inicial};     //reinicia el reloj de cada ficha al comenzar la partida
+
     console.log("\n============ JUEGO DE DAMAS ============\n");
     console.log('Escribe las coordenadas como "fila,columna"\npor ejemplo: C5 (fila C, columna 5)\n');
     console.log("Elige con las flechas del teclado y confirma con Enter.\n");
+    console.log(`Cada jugador cuenta con ${formatear_tiempo(tiempo_inicial)} minutos de tiempo de juego.\n`);
 
     imprimir_tablero();
 
-    while (hay_fichas(ficha1) && hay_fichas(ficha2)){
+    // inicia cronometro asincrono
+    intervalo_cronometro = setInterval(() => {
+        //reducimos el tiempo del jugador en turno
+        tiempo_restante[turno]--;
+
+        //para evitar que el cronometro funcional influya en lo que se muestra en pantalla el cronometro se imprimira el en titulo de la terminal
+        //de esa forma no interviene contra los mensajes de contexto ni con el tablero
+        process.stdout.write(`\x1b]0;Juego de Damas | Blancas: ${formatear_tiempo(tiempo_restante[ficha1])} - Rojas: ${formatear_tiempo(tiempo_restante[ficha2])}\x07`);
+
+        //comprobar si se agoto el tiempo
+        if (tiempo_restante[turno] <= 0){
+            clearInterval(intervalo_cronometro);
+            console.log("\n\n¡TIEMPO AGOTADO!");
+            if (tiempo_restante[ficha1] <= 0){
+                console.log("¡Se acabo el tiempo de las Blancas! ¡¡Ganan las Rojas!!");
+            }
+            else{
+                console.log("¡Se acabo el tiempo de las Rojas! ¡¡Ganan las Blancas!!");
+            }
+            process.exit();     //todo cambiar proximamente para volver al menu //borrarlo
+        }
+    }, 1000);
+
+    while (hay_fichas(ficha1) && hay_fichas(ficha2) && !tiempo_terminado()){
         await turno_jugador();
-        imprimir_tablero();
+        if(!tiempo_terminado()){
+            imprimir_tablero();
+        }
     }
 
-    console.log(hay_fichas(ficha1) ? "¡¡Ganaron las Blancas!!" : "¡¡Ganaron las Rojas!!");
+    //si el juego termina normalmente limpiamos intervalo
+    clearInterval(intervalo_cronometro);
+
+    if(tiempo_restante[ficha1] <= 0){
+        console.log("¡Se agoto el tiempo de las Blancas! ¡¡Ganan las Rojas!!");
+    }
+    else if (tiempo_restante[ficha2] <= 0){
+        console.log("¡Se agoto el tiempo de las Rojas! ¡¡Ganan las Blancas!!");
+    }
+    else{
+        console.log(hay_fichas(ficha1) ? "¡¡Ganaron las Blancas!!" : "¡¡Ganaron las Rojas!!");
+    }
     rl.close();
 }
 
@@ -400,7 +460,7 @@ async function main(){
         switch(opc){
             case "1": 
                     console.clear();
-                    jugar();
+                    await jugar();
             break;
             case "2": console.log("Saliendo del juego...");
                         process.exit();
