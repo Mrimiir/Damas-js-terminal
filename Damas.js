@@ -274,7 +274,7 @@ function elegir_mov(movimientos, titulo){        //titulo es el mensaje de conte
             console.log(titulo);
             const es_captura = movimientos[indice].captura ? " (captura)" : "";
             console.log(`Opción ${indice + 1} de ${movimientos.length}${es_captura}`);
-            console.log("(← izquierda . → derecha . Enter confirmar . Esc cancelar)\n");     //las flechas son las direcciones de movimiento enter confirma el movimiento y esc cancela la ficha elegida para elegir otra ficha
+            console.log("(← izquierda . → derecha . Enter confirmar . Esc cancelar. r rendirse)\n");     //las flechas son las direcciones de movimiento enter confirma el movimiento y esc cancela la ficha elegida para elegir otra ficha
         }
 
         function limpiar(){     //borra las llamadas de entrada de teclas, para que no se acumulen 
@@ -304,6 +304,10 @@ function elegir_mov(movimientos, titulo){        //titulo es el mensaje de conte
             else if (key.name === 'escape'){
                 limpiar();
                 resolve(null);      // null = el jugador cancelo la seleccion de ficha
+            }
+            else if (key.name === 'r'){
+                limpiar();
+                resolve("RENDIRSE");
             }
             else if (key.ctrl && key.name === 'c'){     // Ctrl+c para salir del juego
                 limpiar();
@@ -354,6 +358,11 @@ async function turno_jugador(){     //funcion asincronada = async function
     }
 
     const origen_texto = await rl.question("Elige tu ficha (Ej. C5): ");     //await espera que rl.question sea respondida
+
+    if (origen_texto.trim().toLowerCase() === "r") {
+            return "RENDIRSE";
+        }
+
     const origen = pasear_coordenada(origen_texto);     //la respuesta se convierte en coordenadas
     if (!origen || !es_de_equipo(tablero[origen.fila][origen.colum], turno)){       //si todo da falso manda el siguiente mensaje a consola
         console.log("Casilla invalida o no es tu ficha. Intenta de nuevo.\n");
@@ -372,6 +381,11 @@ async function turno_jugador(){     //funcion asincronada = async function
     }
 
     const destino = await elegir_mov(movimientos, `Ficha en ${texto_coordenada(origen.fila, origen.colum)}: elija su movimiento`);
+
+    // Verificamos si presionó 'R' en el menú de flechas
+    if (destino === "RENDIRSE") {
+        return "RENDIRSE";
+    }
 
     if (!destino){      // el jugador presiono Esc, se candela el turno sin mover nada
         console.log("Selección cancelada.\n");
@@ -394,6 +408,8 @@ async function turno_jugador(){     //funcion asincronada = async function
 
 //----- Funcion que presenta ya la jugabilidad
 async function jugar(){     //funcion que ya muestra las funcionalidades y deja jugar
+    tablero = crear_tablero();      //reinicia el tablero a su estado original
+    turno = ficha1;     //devuelve el turno inicial a ficha1
     tiempo_restante = {[ficha1]: tiempo_inicial, [ficha2]: tiempo_inicial};     //reinicia el reloj de cada ficha al comenzar la partida
 
     console.log("\n============ JUEGO DE DAMAS ============\n");
@@ -422,12 +438,17 @@ async function jugar(){     //funcion que ya muestra las funcionalidades y deja 
             else{
                 console.log("¡Se acabo el tiempo de las Rojas! ¡¡Ganan las Blancas!!");
             }
-            process.exit();     //todo cambiar proximamente para volver al menu //borrarlo
         }
     }, 1000);
 
+    let jugador_rendido = null; // Guardará quién se rindió, si ocurre
+
     while (hay_fichas(ficha1) && hay_fichas(ficha2) && !tiempo_terminado()){
-        await turno_jugador();
+        const accion = await turno_jugador();
+        if (accion === "RENDIRSE"){
+            jugador_rendido = turno;
+            break;
+        }
         if(!tiempo_terminado()){
             imprimir_tablero();
         }
@@ -435,8 +456,11 @@ async function jugar(){     //funcion que ya muestra las funcionalidades y deja 
 
     //si el juego termina normalmente limpiamos intervalo
     clearInterval(intervalo_cronometro);
-
-    if(tiempo_restante[ficha1] <= 0){
+    if (jugador_rendido !== null){
+        console.log(`\n¡Las ${jugador_rendido === ficha1 ? "Blancas (●)" : "Rojas (o)"} se han rendido!`);
+        console.log(jugador_rendido === ficha1 ? "¡¡Ganaron las Rojas!!" : "¡¡Ganaron las Blancas!!");
+    }
+    else if (tiempo_restante[ficha1] <= 0){
         console.log("¡Se agoto el tiempo de las Blancas! ¡¡Ganan las Rojas!!");
     }
     else if (tiempo_restante[ficha2] <= 0){
@@ -445,13 +469,14 @@ async function jugar(){     //funcion que ya muestra las funcionalidades y deja 
     else{
         console.log(hay_fichas(ficha1) ? "¡¡Ganaron las Blancas!!" : "¡¡Ganaron las Rojas!!");
     }
-    rl.close();
+    await rl.question("\nPresiona Enter para continuar...");
 }
 
 
 //funcion principal
 async function main(){
     do{
+        console.clear();
         console.log("====== Menu de juego =====");
         console.log("[1]. Iniciar juego.");
         console.log("[2]. Salir.");
@@ -463,6 +488,7 @@ async function main(){
                     await jugar();
             break;
             case "2": console.log("Saliendo del juego...");
+                        rl.close;
                         process.exit();
             break;
             default : console.log("opcion invalida.");
