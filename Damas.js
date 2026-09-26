@@ -58,6 +58,9 @@ let tablero = crear_tablero();
 let turno = ficha1;             //el turno inicia con las fichas blancas osea las ficha1
 let tiempo_restante = { [ficha1] : tiempo_inicial, [ficha2] : tiempo_inicial};  //cada ficha tiene su propio cronometro
 let intervalo_cronometro = null;    //guardara  el id del setInterval para el cronometro
+let grabando_partida = false;       //false no se guarda partida / true se guarda
+let historial_movimientos = [];     //guarda todos los movimientos 
+let tablero_inicial_repeticion = null;
 
 //----- Funcion de limites del tablero
 function dentro(f, c){      //es una funcion que coloca limites para que las fichas no salgan
@@ -327,7 +330,7 @@ function elegir_mov(movimientos, titulo){        //titulo es el mensaje de conte
 }
 
 //----- Funcion asincrona que obliga a seguir comiendo mientras la misma ficha tenga captura
-async function cadena_captura(posicion, corono){
+async function cadena_captura(posicion, corono, historial_destinos){
     let actual = posicion;
 
     while(!corono && capturas_disponibles(actual.fila, actual.colum).length > 0){
@@ -341,6 +344,7 @@ async function cadena_captura(posicion, corono){
         }
 
         const resultado = mover_fichas(actual, destino);
+        historial_destinos.push(destino);       //guarda el salto extra en el historial
         actual = destino;
         corono = resultado.corono;
     }
@@ -403,8 +407,15 @@ async function turno_jugador(){     //funcion asincronada = async function
         return;
     }
 
+    let destinos_historial = [destino];      // inicia el historial del turno
+
     if (resultado.capturo){
-        await cadena_captura(destino, resultado.corono);        // aqui se obliga a seguir comiendo
+        await cadena_captura(destino, resultado.corono, destinos_historial);        // aqui se obliga a seguir comiendo / pasa el array para que guarde las multiples capturas
+    }
+
+    // si se esta guardando guardar el turno completo
+    if (grabando_partida){
+        historial_movimientos.push({equipo: turno, origen: origen, destino: destinos_historial});
     }
 
     turno = turno === ficha1 ? ficha2 : ficha1;     //cambia de turno al finalizar el turno de las fichas blancas
@@ -417,6 +428,16 @@ async function jugar(es_partida_cargada = false){     //funcion que ya muestra l
         tablero = crear_tablero();      //reinicia el tablero a su estado original
         turno = ficha1;     //devuelve el turno inicial a ficha1
         tiempo_restante = {[ficha1]: tiempo_inicial, [ficha2]: tiempo_inicial};     //reinicia el reloj de cada ficha al comenzar la partida
+
+        //pregunta si el usuario quiere guardar la partida
+        const resp = await rl.question("¿Deseas grabar esta partida para ver su repeticion despues? (S/N): ");
+        grabando_partida = resp.trim().toLocaleUpperCase() === 'S';
+        historial_movimientos = [];
+        tablero_inicial_repeticion = JSON.parse(JSON.stringify(tablero));       // clona el tablero inicial puro
+        console.clear();
+    }
+    else{
+        grabando_partida = false;       // no graba si cargo la partida a la mitad
     }
     
 
@@ -502,6 +523,21 @@ async function jugar(es_partida_cargada = false){     //funcion que ya muestra l
     else{
         console.log(hay_fichas(ficha1) ? "¡¡Ganaron las Blancas!!" : "¡¡Ganaron las Rojas!!");
     }
+
+    //guardado de la repeticion al finalizar
+    if (grabando_partida && historial_movimientos.length > 0){
+        console.log("\n--- Guardar Repeticion ---");
+        const nombre_rep = await rl.question("Ingresa un nombre para guardar la repeticion (o solo preciona Enter para no guardar): ");
+        if(nombre_rep.trim() !== ""){
+            try{
+                await fs.mkdir(`./repeticiones/${nombre_rep}.json`, JSON.stringify(datos_repeticion));      //crea la carpeta que guardara la repeticiones
+                console.log(`Repeticion "${nombre_rep}" guardada con exito.`);
+            }
+            catch (error){
+                console.log("Error al guardar la repeticion.");
+            }
+        } 
+    }
     await rl.question("\nPresiona Enter para continuar...");
 }
 
@@ -551,6 +587,66 @@ async function cargar_partida(){
     }
 }
 
+//----- Funcion para visualizar repeticiones grabadas
+async function reproducir_repeticion() {
+    try {
+        await fs.mkdir('./repeticiones', { recursive: true });
+        const archivos = (await fs.readdir('./repeticiones')).filter(f => f.endsWith('.json'));
+
+        if (archivos.length === 0) {
+            console.log("\nNo hay repeticiones guardadas.\n");
+            await rl.question("Presiona Enter para volver...");
+            return;
+        }
+
+        console.log("\n--- Repeticiones Guardadas ---");
+        archivos.forEach((archivo, i) => {
+            console.log(`[${i + 1}]. ${archivo.replace('.json', '')}`);
+        });
+        console.log("[0]. Cancelar");
+
+        const seleccion = await rl.question("\nElige el número de la repetición: ");
+        const num = parseInt(seleccion);
+
+        if (num === 0 || isNaN(num) || num > archivos.length) return;
+
+        const datos = JSON.parse(await fs.readFile(`./repeticiones/${archivos[num - 1]}`, 'utf-8'));
+        
+        // Reinicia el tablero basándonos en cómo empezó la grabación
+        tablero = datos.tablero_inicial;
+        
+        console.clear();
+        console.log(`=== REPRODUCCIÓN: ${archivos[num - 1].replace('.json', '')} ===`);
+        imprimir_tablero();
+        
+        // Recorre cada turno guardado
+        for (const mov of datos.movimientos) {
+            const equipo_str = mov.equipo === ficha1 ? "Blancas (●)" : "Rojas (o)";
+            await rl.question(`Es turno de ${equipo_str}. Presiona Enter para ver el movimiento...`);
+            
+            let origen_actual = mov.origen;
+            
+            // Recorre los destinos (en caso de que sean saltos múltiples)
+            for (const dest of mov.destinos) {
+                mover_fichas(origen_actual, dest);
+                console.clear();
+                console.log(`=== REPRODUCCIÓN ===\nMovimiento realizado por: ${equipo_str}`);
+                imprimir_tablero(dest); // Resalta en amarillo donde cayó
+                origen_actual = dest; // Si hay otro salto múltiple, este destino pasa a ser el origen
+                
+                if (mov.destinos.length > 1 && dest !== mov.destinos[mov.destinos.length -1]) {
+                    await rl.question("...continúa la captura múltiple (Enter para ver)...");
+                }
+            }
+        }
+        console.log("\n¡Fin de la repetición!");
+        await rl.question("Presiona Enter para volver al menú principal...");
+
+    } catch (error) {
+        console.log("\nError al intentar cargar la repetición.");
+        await rl.question("Presiona Enter para volver...");
+    }
+}
 
 //funcion principal
 async function main(){
@@ -559,7 +655,8 @@ async function main(){
         console.log("====== Menu de juego =====");
         console.log("[1]. Iniciar juego.");
         console.log("[2]. Cargar partida guardada.")
-        console.log("[3]. Salir.");
+        console.log("[3]. Ver repeticion de partida.");
+        console.log("[4]. Salir.");
 
         const opc = await rl.question("Ingrese una opcion: ");
         switch(opc){
@@ -571,7 +668,11 @@ async function main(){
                     console.clear();
                     await cargar_partida();
             break;
-            case "3": console.log("Saliendo del juego...");
+            case "3":
+                    console.clear();
+                    await reproducir_repeticion();
+            break;
+            case "4": console.log("Saliendo del juego...");
                         rl.close;
                         process.exit();
             break;
